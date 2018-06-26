@@ -1,2 +1,2 @@
 # text-post-edit
-Implementing text-post-edit through CNN
+Using Facebooks fairseq library for a project
