@@ -103,6 +103,8 @@ def main(args):
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
 
+file = open('log.txt', 'a') #----------------------------------------------------------------------------------------
+
 def train(args, trainer, dataset, epoch, batch_offset):
     """Train the model for one epoch."""
 
@@ -155,6 +157,22 @@ def train(args, trainer, dataset, epoch, batch_offset):
             else:
                 extra_meters[k].update(v)
             stats[k] = extra_meters[k].avg
+
+        #-------------------------------------------------------------------------------------------------
+        y=str(str(stats['loss'])+','
+            +str(stats['ppl'])+','
+            +str(stats['wps'])+','
+            +str(stats['ups'])+','
+            +str(stats['wpb'])+','
+            +str(stats['bsz'])+','
+            +str(stats['num_updates'])+','
+            +str(stats['lr'])+','
+            +str(stats['gnorm'])+','
+            +str(stats['clip'])+','
+            +str(stats['oom'])+','
+            +str(stats['sample_size'])+'\n'
+            )
+        file.write(y)
         progress.log(stats)
 
         # save mid-epoch checkpoints
@@ -299,3 +317,4 @@ if __name__ == '__main__':
     parser = options.get_training_parser()
     args = options.parse_args_and_arch(parser)
     main(args)
+    file.close()
