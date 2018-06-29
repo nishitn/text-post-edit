@@ -45,9 +45,8 @@ def main(args):
     # (None if no unknown word replacement, empty if no path to align dictionary)
     align_dict = utils.load_align_dict(args.replace_unk)
 
-    print('| Type the input sentence and press return:')
     i=0
-    for src_str in f1.readlines():
+    for src_str in file.readlines():
         src_str = src_str.strip()
         src_tokens = tokenizer.Tokenizer.tokenize(src_str, src_dict, add_if_not_exist=False).long()
         if use_cuda:
@@ -70,85 +69,22 @@ def main(args):
                 remove_bpe=args.remove_bpe,
             )
             y=hypo_str+'\n'
-            t1.write(y)
+            target.write(y)
             i+=1
             elapsed_time=time.time()-start_time
-            print('t1 ', i, ' ',elapsed_time,end='\r')
-    i=0
-    for src_str in f2.readlines():
-        src_str = src_str.strip()
-        src_tokens = tokenizer.Tokenizer.tokenize(src_str, src_dict, add_if_not_exist=False).long()
-        if use_cuda:
-            src_tokens = src_tokens.cuda()
-        src_lengths = src_tokens.new([src_tokens.numel()])
-        translations = translator.generate(
-            Variable(src_tokens.view(1, -1)),
-            Variable(src_lengths.view(-1)),
-        )
-        hypos = translations[0]
-        #print('O\t{}'.format(src_str))
-
-        # Process top predictions
-        for hypo in hypos[:min(len(hypos), args.nbest)]:
-            hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
-                hypo_tokens=hypo['tokens'].int().cpu(),
-                src_str=src_str,
-                alignment=hypo['alignment'].int().cpu(),
-                align_dict=align_dict,
-                dst_dict=dst_dict,
-                remove_bpe=args.remove_bpe,
-            )
-            y=hypo_str+'\n'
-            t2.write(y)
-            i+=1
-            print('t2 ', i, end='\r')
-    i=0
-    for src_str in f3.readlines():
-        src_str = src_str.strip()
-        src_tokens = tokenizer.Tokenizer.tokenize(src_str, src_dict, add_if_not_exist=False).long()
-        if use_cuda:
-            src_tokens = src_tokens.cuda()
-        src_lengths = src_tokens.new([src_tokens.numel()])
-        translations = translator.generate(
-            Variable(src_tokens.view(1, -1)),
-            Variable(src_lengths.view(-1)),
-        )
-        hypos = translations[0]
-        #print('O\t{}'.format(src_str))
-
-        # Process top predictions
-        for hypo in hypos[:min(len(hypos), args.nbest)]:
-            hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
-                hypo_tokens=hypo['tokens'].int().cpu(),
-                src_str=src_str,
-                alignment=hypo['alignment'].int().cpu(),
-                align_dict=align_dict,
-                dst_dict=dst_dict,
-                remove_bpe=args.remove_bpe,
-            )
-            y=hypo_str+'\n'
-            t3.write(y)
-            i+=1
-            print('t3 ', i, end='\r')
-
-            #print('H\t{}'.format(hypo_str))
-            #print('H\t{}\t{}'.format(hypo['score'], hypo_str))
-            #print('A\t{}'.format(' '.join(map(lambda x: str(utils.item(x)), alignment))))
+            print('| Translating line ', i, ' Time Elapsed',elapsed_time,end='\r')
+    
+    elapsed_time=time.time()-start_time
+    print('')
+    print('| Translation done - Time Taken = ',elapsed_time)
 
 
 if __name__ == '__main__':
     parser = options.get_generation_parser()
     args = parser.parse_args()
-    f1 = open('data/iwslt14.tokenized.de-en/train.de')
-    f2 = open('data/iwslt14.tokenized.de-en/test.de')
-    f3 = open('data/iwslt14.tokenized.de-en/valid.de')
-    t1 = open('logs/f1.txt', 'a') #-----------------------------------------------------------------------------------
-    t2 = open('logs/f2.txt', 'a') #-----------------------------------------------------------------------------------
-    t3 = open('logs/f3.txt', 'a') #-----------------------------------------------------------------------------------
-    main(args)    
-    f1.close()
-    f2.close()
-    f3.close()
-    t1.close()
-    t2.close()
-    t3.close()
+    input_file = input('| Type the Input file location and press return: ')
+    file = open(input_file)
+    target = open('logs/translate.txt', 'a') #-----------------------------------------------------------------------------------
+    main(args) 
+    file.close()
+    target.close()
