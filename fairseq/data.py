@@ -239,17 +239,22 @@ class LanguagePairDataset(torch.utils.data.Dataset):
             )
         
         id = torch.LongTensor([s['id'] for s in samples])
+        
         src_tokens = merge('source', left_pad=LanguagePairDataset.LEFT_PAD_SOURCE)
         # sort by descending source length
         src_lengths = torch.LongTensor([s['source'].numel() for s in samples])
         src_lengths, sort_order = src_lengths.sort(descending=True)
         id = id.index_select(0, sort_order)
         src_tokens = src_tokens.index_select(0, sort_order)
-        
+
         #----------------------------------------------------------------------------------------------------------------
         guess_tokens = merge('guess', left_pad=LanguagePairDataset.LEFT_PAD_SOURCE)
         guess_lengths = torch.LongTensor([s['guess'].numel() for s in samples]) 
         guess_tokens = guess_tokens.index_select(0, sort_order)
+
+        #print(id[0])
+        #print(src_tokens[0])
+        #print(guess_tokens[0])
 
         prev_output_tokens = None
         target = None

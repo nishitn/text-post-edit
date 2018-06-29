@@ -8,7 +8,7 @@
 import torch.nn as nn
 import numpy as np
 from . import FairseqDecoder, FairseqEncoder, FairseqGuessEncoder #------------------------------------------------------
-
+from .. import utils
 
 class FairseqModel(nn.Module):
     """Base class for encoder-decoder models."""
@@ -47,8 +47,9 @@ class FairseqModel(nn.Module):
         raise NotImplementedError
 
     def forward(self, src_tokens, src_lengths, prev_output_tokens, guess_tokens, guess_lengths): #----------------------
+        utils.check_correct(src_tokens[0],guess_tokens[0],prev_output_tokens[0],self.src_dict,self.guess_dict,self.dst_dict)
         encoder_out = self.encoder(src_tokens, src_lengths)
-        guess_encoder_out = self.guess_encoder(src_tokens, src_lengths)  #----------------------------------------------
+        guess_encoder_out = self.guess_encoder(guess_tokens, guess_lengths)  #----------------------------------------------
         decoder_out = self.decoder(prev_output_tokens, encoder_out, guess_encoder_out)#---------------------------------
         return decoder_out
 

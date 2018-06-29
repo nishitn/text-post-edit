@@ -75,9 +75,10 @@ class FConvModel(FairseqModel):
         if not hasattr(args, 'guess_encoder_embed_path'):
             args.guess_encoder_embed_path = None
 
+        #-----------------------------------------------------------------------------------------------------------
         guess_encoder_embed_dict = None
         if args.encoder_embed_path:
-            guess_encoder_embed_dict = utils.parse_embedding(args.encoder_embed_path) #********************************
+            guess_encoder_embed_dict = utils.parse_embedding(args.guess_encoder_embed_path) 
             utils.print_embed_overlap(encoder_embed_dict, src_dict)
 
         encoder_embed_dict = None
@@ -100,7 +101,7 @@ class FConvModel(FairseqModel):
         )
         #-------------------------------------------------------------------------------------------
         guess_encoder = FConvGuessEncoder(
-            src_dict, #*****************************************************************************
+            dst_dict, #*****************************************************************************
             embed_dim=args.guess_encoder_embed_dim, 
             embed_dict=guess_encoder_embed_dict,
             convolutions=eval(args.guess_encoder_layers),
@@ -396,7 +397,6 @@ class FConvDecoder(FairseqIncrementalDecoder):
         x += self.embed_positions(prev_output_tokens, incremental_state)
         x = F.dropout(x, p=self.dropout, training=self.training)
         target_embedding = x
-
         # project to size of convolution
         x = self.fc1(x)
 
@@ -404,7 +404,8 @@ class FConvDecoder(FairseqIncrementalDecoder):
         x = self._transpose_if_training(x, incremental_state)
 
         # temporal convolutions
-        avg_attn_scores = None
+        avg_attn_scores1=None
+        avg_attn_scores2 = None
         num_attn_layers = len(self.attention)
         for proj, conv, attention in zip(self.projections, self.convolutions, self.attention):
             residual = x if proj is None else proj(x)
@@ -421,13 +422,18 @@ class FConvDecoder(FairseqIncrementalDecoder):
                 a_g, attn_scores2 = attention(x, target_embedding, (guess_encoder_a, guess_encoder_b))
                 
                 x=0.5*(a_e+a_g)
-                attn_scores = 0.5 * (attn_scores1 + attn_scores2) 
 
-                attn_scores = attn_scores / num_attn_layers
-                if avg_attn_scores is None:
-                    avg_attn_scores = attn_scores
+                attn_scores1 = attn_scores1 / num_attn_layers
+                attn_scores2 = attn_scores2 / num_attn_layers
+                if avg_attn_scores1 is None:
+                    avg_attn_scores1 = attn_scores1
                 else:
-                    avg_attn_scores.add_(attn_scores)
+                    avg_attn_scores1.add_(attn_scores1)
+
+                if avg_attn_scores2 is None:
+                    avg_attn_scores2 = attn_scores2
+                else:
+                    avg_attn_scores2.add_(attn_scores2)
 
                 x = self._transpose_if_training(x, incremental_state)
 
@@ -442,7 +448,7 @@ class FConvDecoder(FairseqIncrementalDecoder):
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.fc3(x)
 
-        return x, avg_attn_scores
+        return x, (avg_attn_scores1,avg_attn_scores2)
 
     def max_positions(self):
         """Maximum output length supported by the decoder."""
@@ -531,6 +537,8 @@ def ConvTBC(in_channels, out_channels, kernel_size, dropout=0, **kwargs):
 def base_architecture(args):
     args.encoder_embed_dim = getattr(args, 'encoder_embed_dim', 512)
     args.encoder_layers = getattr(args, 'encoder_layers', '[(512, 3)] * 20')
+    args.guess_encoder_embed_dim = getattr(args, 'guess_encoder_embed_dim', 512)
+    args.guess_encoder_layers = getattr(args, 'guess_encoder_layers', '[(512, 3)] * 20')
     args.decoder_embed_dim = getattr(args, 'decoder_embed_dim', 512)
     args.decoder_layers = getattr(args, 'decoder_layers', '[(512, 3)] * 20')
     args.decoder_out_embed_dim = getattr(args, 'decoder_out_embed_dim', 256)

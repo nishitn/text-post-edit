@@ -375,3 +375,14 @@ def item(tensor):
     if hasattr(tensor, '__getitem__'):
         return tensor[0]
     return tensor
+
+
+def check_sentence(sentence, token_dict):
+    for i in sentence:
+        print(token_dict[i], end=' ')
+    print('')
+
+def check_correct(src_token, guess_token, prev_output_token, src_dict, guess_dict, dst_dict):
+    check_sentence(src_token,src_dict)
+    check_sentence(guess_token,guess_dict)
+    check_sentence(prev_output_token,dst_dict)
