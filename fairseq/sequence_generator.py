@@ -100,6 +100,7 @@ class SequenceGenerator(object):
         beam_size = min(beam_size, self.vocab_size - 1)
 
         encoder_outs = []
+        guess_encoder_outs = []
         incremental_states = {}
         for model in self.models:
             if not self.retain_dropout:
@@ -116,6 +117,11 @@ class SequenceGenerator(object):
             )
             encoder_outs.append(encoder_out)
 
+            guess_encoder_out = model.guess_encoder(
+                src_tokens.repeat(1, beam_size).view(-1, srclen),
+                src_lengths.repeat(beam_size),
+            )
+            guess_encoder_outs.append(guess_encoder_out)
         # initialize buffers
         scores = src_tokens.data.new(bsz * beam_size, maxlen + 1).float().fill_(0)
         scores_buf = scores.clone()
@@ -249,7 +255,7 @@ class SequenceGenerator(object):
                             incremental_states[model], reorder_state)
 
             probs, avg_attn_scores = self._decode(
-                tokens[:, :step+1], encoder_outs, incremental_states)
+                tokens[:, :step+1], encoder_outs, guess_encoder_outs, incremental_states)
             if step == 0:
                 # at the first step all hypotheses are equally likely, so use
                 # only the first beam
@@ -430,18 +436,18 @@ class SequenceGenerator(object):
 
         return finalized
 
-    def _decode(self, tokens, encoder_outs, incremental_states):
+    def _decode(self, tokens, encoder_outs, guess_encoder_outs, incremental_states): #-----------------------------------------------
         # wrap in Variable
         tokens = utils.volatile_variable(tokens)
 
         avg_probs = None
         avg_attn = None
-        for model, encoder_out in zip(self.models, encoder_outs):
+        for model, encoder_out, guess_encoder_out in zip(self.models, encoder_outs, guess_encoder_outs):
             with utils.maybe_no_grad():
                 if incremental_states[model] is not None:
-                    decoder_out = list(model.decoder(tokens, encoder_out, incremental_states[model]))
+                    decoder_out = list(model.decoder(tokens, encoder_out, guess_encoder_outs, incremental_states[model]))#-----------
                 else:
-                    decoder_out = list(model.decoder(tokens, encoder_out))
+                    decoder_out = list(model.decoder(tokens, encoder_out, guess_encoder_outs))#--------------------------------------
                 decoder_out[0] = decoder_out[0][:, -1, :]
                 attn = decoder_out[1]
             probs = model.get_normalized_probs(decoder_out, log_probs=False).data

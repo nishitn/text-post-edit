@@ -52,9 +52,9 @@ def load_dataset(path, load_splits, src=None, dst=None):
         # find language pair automatically
         src, dst = infer_language_pair(path, load_splits)
     assert src is not None and dst is not None, 'Source and target languages should be provided'
-
-    src_dict, dst_dict = load_dictionaries(path, src, dst)
-    dataset = LanguageDatasets(src, dst, src_dict, dst_dict)
+    guess = dst #----------------------------------------------------------------------------------------------------------------
+    src_dict, dst_dict = load_dictionaries(path, src, dst) #---------------------------------------------------------------------
+    dataset = LanguageDatasets(src, guess, dst, src_dict, dst_dict)
 
     # Load dataset from binary files
     def all_splits_exist(src, dst, lang):
@@ -79,6 +79,7 @@ def load_dataset(path, load_splits, src=None, dst=None):
         for k in itertools.count():
             prefix = "{}{}".format(split, k if k > 0 else '')
             src_path = fmt_path('{}.{}.{}', prefix, langcode, src)
+            guess_path = fmt_path('{}.{}.{}.guess', prefix, langcode, dst) #**************************************************
             dst_path = fmt_path('{}.{}.{}', prefix, langcode, dst)
 
             if not IndexedInMemoryDataset.exists(src_path):
@@ -88,9 +89,13 @@ def load_dataset(path, load_splits, src=None, dst=None):
             if IndexedInMemoryDataset.exists(dst_path):
                 target_dataset = IndexedInMemoryDataset(dst_path)
 
+            guess_dataset = None
+            if IndexedInMemoryDataset.exists(guess_path):
+                guess_dataset = IndexedInMemoryDataset(guess_path) #-----------------------------------------------------------
+
             dataset.splits[prefix] = LanguagePairDataset(
                 IndexedInMemoryDataset(src_path),
-                target_dataset,
+                guess_dataset, target_dataset, #-------------------------------------------------------------------------------
                 pad_idx=dataset.src_dict.pad(),
                 eos_idx=dataset.src_dict.eos(),
             )
@@ -106,15 +111,18 @@ def load_raw_text_dataset(path, load_splits, src=None, dst=None):
         src, dst = infer_language_pair(path, load_splits)
     assert src is not None and dst is not None, 'Source and target languages should be provided'
 
+    guess = dst #----------------------------------------------------------------------------------------------------------------
     src_dict, dst_dict = load_dictionaries(path, src, dst)
-    dataset = LanguageDatasets(src, dst, src_dict, dst_dict)
+    dataset = LanguageDatasets(src, guess, dst, src_dict, dst_dict)
 
     # Load dataset from raw text files
     for split in load_splits:
         src_path = os.path.join(path, '{}.{}'.format(split, src))
+        guess_path = os.path.join(path, '{}.{}.guess'.format(split, guess)) #**************************************************
         dst_path = os.path.join(path, '{}.{}'.format(split, dst))
         dataset.splits[split] = LanguagePairDataset(
             IndexedRawTextDataset(src_path, src_dict),
+            IndexedRawTextDataset(guess_path, dst_dict),
             IndexedRawTextDataset(dst_path, dst_dict),
             pad_idx=dataset.src_dict.pad(),
             eos_idx=dataset.src_dict.eos(),
@@ -123,29 +131,36 @@ def load_raw_text_dataset(path, load_splits, src=None, dst=None):
 
 
 class LanguageDatasets(object):
-    def __init__(self, src, dst, src_dict, dst_dict):
+    def __init__(self, src, guess, dst, src_dict, dst_dict): #------------------------------------------------------------------
         self.src = src
+        self.guess = guess #----------------------------------------------------------------------------------------------------
         self.dst = dst
         self.src_dict = src_dict
+        self.guess_dict= dst_dict #---------------------------------------------------------------------------------------------
         self.dst_dict = dst_dict
         self.splits = {}
 
         assert self.src_dict.pad() == self.dst_dict.pad()
         assert self.src_dict.eos() == self.dst_dict.eos()
         assert self.src_dict.unk() == self.dst_dict.unk()
+        #-----------------------------------------------------------------------------------------------------------------------
+        assert self.guess_dict.pad() == self.dst_dict.pad()
+        assert self.guess_dict.eos() == self.dst_dict.eos()
+        assert self.guess_dict.unk() == self.dst_dict.unk()
 
     def train_dataloader(self, split, max_tokens=None,
-                         max_sentences=None, max_positions=(1024, 1024),
+                         max_sentences=None, max_positions=(1024, 1024, 1024),
                          seed=None, epoch=1, sample_without_replacement=0,
                          sort_by_source_size=False, shard_id=0, num_shards=1):
         dataset = self.splits[split]
         with numpy_seed(seed):
             batch_sampler = shuffled_batches_by_size(
-                dataset.src, dataset.dst, max_tokens=max_tokens,
+                dataset.src, dataset.guess, dataset.dst, max_tokens=max_tokens, #-----------------------------------------------
                 max_sentences=max_sentences, epoch=epoch,
                 sample=sample_without_replacement, max_positions=max_positions,
                 sort_by_source_size=sort_by_source_size)
             batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
+        
         return torch.utils.data.DataLoader(
             dataset, collate_fn=dataset.collater,
             batch_sampler=batch_sampler)
@@ -156,13 +171,13 @@ class LanguageDatasets(object):
                         descending=False, shard_id=0, num_shards=1):
         dataset = self.splits[split]
         batch_sampler = batches_by_size(
-            dataset.src, dataset.dst, max_tokens, max_sentences,
+            dataset.src, dataset.guess, dataset.dst, max_tokens, max_sentences, #-----------------------------------------------
             max_positions=max_positions,
             ignore_invalid_inputs=skip_invalid_size_inputs_valid_test,
             descending=descending)
         batch_sampler = mask_batches(batch_sampler, shard_id=shard_id, num_shards=num_shards)
         return torch.utils.data.DataLoader(
-            dataset, num_workers=num_workers, collate_fn=dataset.collater,
+            dataset, collate_fn=dataset.collater,
             batch_sampler=batch_sampler)
 
 
@@ -189,8 +204,9 @@ class LanguagePairDataset(torch.utils.data.Dataset):
     LEFT_PAD_SOURCE = True
     LEFT_PAD_TARGET = False
 
-    def __init__(self, src, dst, pad_idx, eos_idx):
+    def __init__(self, src, guess, dst, pad_idx, eos_idx): #-------------------------------------------------------------------
         self.src = src
+        self.guess = guess
         self.dst = dst
         self.pad_idx = pad_idx
         self.eos_idx = eos_idx
@@ -198,10 +214,11 @@ class LanguagePairDataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         # subtract 1 for 0-based indexing
         source = self.src[i].long() - 1
-        res = {'id': i, 'source': source}
+        guess = self.guess[i].long() - 1 #--------------------------------------------------------------------------------
+        res = {'id': i, 'source': source, 'guess': guess} #---------------------------------------------------------------
         if self.dst:
             res['target'] = self.dst[i].long() - 1
-
+        
         return res
 
     def __len__(self):
@@ -220,7 +237,7 @@ class LanguagePairDataset(torch.utils.data.Dataset):
                 [s[key] for s in samples],
                 pad_idx, eos_idx, left_pad, move_eos_to_beginning,
             )
-
+        
         id = torch.LongTensor([s['id'] for s in samples])
         src_tokens = merge('source', left_pad=LanguagePairDataset.LEFT_PAD_SOURCE)
         # sort by descending source length
@@ -228,6 +245,11 @@ class LanguagePairDataset(torch.utils.data.Dataset):
         src_lengths, sort_order = src_lengths.sort(descending=True)
         id = id.index_select(0, sort_order)
         src_tokens = src_tokens.index_select(0, sort_order)
+        
+        #----------------------------------------------------------------------------------------------------------------
+        guess_tokens = merge('guess', left_pad=LanguagePairDataset.LEFT_PAD_SOURCE)
+        guess_lengths = torch.LongTensor([s['guess'].numel() for s in samples]) 
+        guess_tokens = guess_tokens.index_select(0, sort_order)
 
         prev_output_tokens = None
         target = None
@@ -245,6 +267,7 @@ class LanguagePairDataset(torch.utils.data.Dataset):
             target = target.index_select(0, sort_order)
             ntokens = sum(len(s['target']) for s in samples)
 
+        #print("hello")
         return {
             'id': id,
             'ntokens': ntokens,
@@ -252,14 +275,15 @@ class LanguagePairDataset(torch.utils.data.Dataset):
                 'src_tokens': src_tokens,
                 'src_lengths': src_lengths,
                 'prev_output_tokens': prev_output_tokens,
-                'guess_tokens': src_tokens,
-                'guess_lengths': src_lengths,
+                'guess_tokens': guess_tokens,
+                'guess_lengths': guess_lengths,
             },
             'target': target,
         }
 
     @staticmethod
     def collate_tokens(values, pad_idx, eos_idx, left_pad, move_eos_to_beginning=False):
+        #print(values)
         size = max(v.size(0) for v in values)
         res = values[0].new(len(values), size).fill_(pad_idx)
 
@@ -280,11 +304,11 @@ class LanguagePairDataset(torch.utils.data.Dataset):
         return res
 
 
-def _valid_size(src_size, dst_size, max_positions):
+def _valid_size(src_size, guess_size, dst_size, max_positions): #------------------------------------------------------------------
     if isinstance(max_positions, numbers.Number):
-        max_src_positions, max_dst_positions = max_positions, max_positions
+        max_src_positions, max_guess_positions, max_dst_positions = max_positions, max_positions, max_positions #-------------------
     else:
-        max_src_positions, max_dst_positions = max_positions
+        max_src_positions, max_guess_positions, max_dst_positions = max_positions #-----------------------------------------------
     if src_size < 1 or src_size > max_src_positions:
         return False
     if dst_size is not None and (dst_size < 1 or dst_size > max_dst_positions):
@@ -292,7 +316,7 @@ def _valid_size(src_size, dst_size, max_positions):
     return True
 
 
-def _make_batches(src, dst, indices, max_tokens, max_sentences, max_positions,
+def _make_batches(src, guess, dst, indices, max_tokens, max_sentences, max_positions, #-------------------------------------------
                   ignore_invalid_inputs=False, allow_different_src_lens=False):
     batch = []
 
@@ -312,22 +336,23 @@ def _make_batches(src, dst, indices, max_tokens, max_sentences, max_positions,
     ignored = []
     for idx in map(int, indices):
         src_size = src.sizes[idx]
+        guess_size = guess.sizes[idx] #-----------------------------------------------------------------------------------------
         dst_size = dst.sizes[idx] if dst else src_size
-        if not _valid_size(src_size, dst_size, max_positions):
+        if not _valid_size(src_size, guess_size, dst_size, max_positions):
             if ignore_invalid_inputs:
                 ignored.append(idx)
                 continue
             raise Exception((
-                "Sample #{} has size (src={}, dst={}) but max size is {}."
+                "Sample #{} has size (src={}, guess={}, dst={}) but max size is {}." #---------------------------------------------
                 " Skip this example with --skip-invalid-size-inputs-valid-test"
             ).format(idx, src_size, dst_size, max_positions))
 
-        sample_len = max(sample_len, src_size, dst_size)
+        sample_len = max(sample_len, src_size, guess_size, guess_size, dst_size) #-------------------------------------------------
         num_tokens = (len(batch) + 1) * sample_len
         if yield_batch(idx, num_tokens):
             yield batch
             batch = []
-            sample_len = max(src_size, dst_size)
+            sample_len = max(src_size, guess_size, dst_size) #-----------------------------------------------------------------
 
         batch.append(idx)
 
@@ -339,12 +364,12 @@ def _make_batches(src, dst, indices, max_tokens, max_sentences, max_positions,
               "and will be ignored, first few sample ids={}".format(len(ignored), ignored[:10]))
 
 
-def batches_by_size(src, dst, max_tokens=None, max_sentences=None,
+def batches_by_size(src, guess, dst, max_tokens=None, max_sentences=None, #--------------------------------------------------------
                     max_positions=(1024, 1024), ignore_invalid_inputs=False,
                     descending=False):
     """Returns batches of indices sorted by size. Sequences with different
     source lengths are not allowed in the same batch."""
-    assert isinstance(src, IndexedDataset) and (dst is None or isinstance(dst, IndexedDataset))
+    assert isinstance(src, IndexedDataset) and (dst is None or isinstance(dst, IndexedDataset)) and isinstance(guess, IndexedDataset)
     if max_tokens is None:
         max_tokens = float('Inf')
     if max_sentences is None:
@@ -353,16 +378,16 @@ def batches_by_size(src, dst, max_tokens=None, max_sentences=None,
     if descending:
         indices = np.flip(indices, 0)
     return list(_make_batches(
-        src, dst, indices, max_tokens, max_sentences, max_positions,
+        src, guess, dst, indices, max_tokens, max_sentences, max_positions, #----------------------------------------------------
         ignore_invalid_inputs, allow_different_src_lens=False))
 
 
-def shuffled_batches_by_size(src, dst, max_tokens=None, max_sentences=None,
-                             epoch=1, sample=0, max_positions=(1024, 1024),
+def shuffled_batches_by_size(src, guess, dst, max_tokens=None, max_sentences=None, #---------------------------------------------
+                             epoch=1, sample=0, max_positions=(1024, 1024, 1024),
                              sort_by_source_size=False):
     """Returns batches of indices, bucketed by size and then shuffled. Batches
     may contain sequences of different lengths."""
-    assert isinstance(src, IndexedDataset) and isinstance(dst, IndexedDataset)
+    assert isinstance(src, IndexedDataset) and isinstance(dst, IndexedDataset)  and isinstance(guess, IndexedDataset)
     if max_tokens is None:
         max_tokens = float('Inf')
     if max_sentences is None:
@@ -372,10 +397,11 @@ def shuffled_batches_by_size(src, dst, max_tokens=None, max_sentences=None,
 
     # sort by sizes
     indices = indices[np.argsort(dst.sizes[indices], kind='mergesort')]
+    indices = indices[np.argsort(guess.sizes[indices], kind='mergesort')]
     indices = indices[np.argsort(src.sizes[indices], kind='mergesort')]
 
     batches = list(_make_batches(
-        src, dst, indices, max_tokens, max_sentences, max_positions,
+        src, guess, dst, indices, max_tokens, max_sentences, max_positions, #--------------------------------------------------
         ignore_invalid_inputs=True, allow_different_src_lens=True))
 
     if not sort_by_source_size:

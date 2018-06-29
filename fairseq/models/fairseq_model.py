@@ -6,7 +6,7 @@
 # can be found in the PATENTS file in the same directory.
 
 import torch.nn as nn
-
+import numpy as np
 from . import FairseqDecoder, FairseqEncoder, FairseqGuessEncoder #------------------------------------------------------
 
 
@@ -24,7 +24,7 @@ class FairseqModel(nn.Module):
         assert isinstance(self.decoder, FairseqDecoder)
 
         self.src_dict = encoder.dictionary
-        self.guess_dict = encoder.dictionary #**************************************************************************
+        self.guess_dict = guess_encoder.dictionary #**************************************************************************
         self.dst_dict = decoder.dictionary
         assert self.src_dict.pad() == self.dst_dict.pad()
         assert self.src_dict.eos() == self.dst_dict.eos()

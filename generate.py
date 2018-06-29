@@ -65,7 +65,7 @@ def main(args):
         args.gen_subset,
         max_sentences=args.max_sentences,
         max_positions=max_positions,
-        skip_invalid_size_inputs_valid_test=args.skip_invalid_size_inputs_valid_test,
+        skip_invalid_size_inputs_valid_test=True,
     )
     if args.num_shards > 1:
         if args.shard_id < 0 or args.shard_id >= args.num_shards:
@@ -112,9 +112,15 @@ def main(args):
 
             if not args.quiet:
                 print('S-{}\t{}'.format(sample_id, src_str))
+                y=str(src_str)+'\n'
+                source_file.write(y)
                 if has_target:
+                    y=str(target_str)+'\n'
+                    target_file.write(y)
                     print('T-{}\t{}'.format(sample_id, target_str))
-
+                else:
+                    y=str(sample_id)+'checkcheck\n'
+                    target_file.write(y)
             # Process top predictions
             for i, hypo in enumerate(hypos[:min(len(hypos), args.nbest)]):
                 hypo_tokens, hypo_str, alignment = utils.post_process_prediction(
@@ -126,7 +132,7 @@ def main(args):
                     remove_bpe=args.remove_bpe,
                 )
 
-                if not args.quiet:
+                if True:#not args.quiet:
                     print('H-{}\t{}\t{}'.format(sample_id, hypo['score'], hypo_str))
                     print('P-{}\t{}'.format(
                         sample_id,
@@ -138,7 +144,7 @@ def main(args):
                     print('A-{}\t{}'.format(
                         sample_id,
                         ' '.join(map(lambda x: str(utils.item(x)), alignment))
-                    ))
+                           ))
 
                 # Score only the top hypothesis
                 if has_target and i == 0:
@@ -161,4 +167,8 @@ def main(args):
 if __name__ == '__main__':
     parser = options.get_generation_parser()
     args = parser.parse_args()
+    source_file = open('logs/source.txt', 'a') #----------------------------------------------------------------------------------------
+    target_file = open('logs/translation.txt', 'a') #-----------------------------------------------------------------------------------
     main(args)
+    source_file.close()
+    target_file.close()

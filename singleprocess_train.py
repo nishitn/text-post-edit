@@ -18,7 +18,7 @@ from fairseq.trainer import Trainer
 
 
 def main(args):
-    print(args)
+    #print(args)
 
     if not torch.cuda.is_available():
         raise NotImplementedError('Training on CPU is not supported')
@@ -102,10 +102,10 @@ def main(args):
 
     print('| done training in {:.1f} seconds'.format(train_meter.sum))
 
-
-file = open('log.txt', 'a') #----------------------------------------------------------------------------------------
+file = open('logs/log.txt', 'a') #----------------------------------------------------------------------------------------
 
 def train(args, trainer, dataset, epoch, batch_offset):
+
     """Train the model for one epoch."""
 
     # Set seed based on args.seed and the epoch number so that we get
@@ -117,6 +117,7 @@ def train(args, trainer, dataset, epoch, batch_offset):
     # e.g., RNNs may support more positions at test time than seen in training
     max_positions_train = (
         min(args.max_source_positions, trainer.get_model().max_encoder_positions()),
+        min(args.max_guess_positions, trainer.get_model().max_guess_encoder_positions()),
         min(args.max_target_positions, trainer.get_model().max_decoder_positions())
     )
 
@@ -135,7 +136,6 @@ def train(args, trainer, dataset, epoch, batch_offset):
     )
     progress = progress_bar.build_progress_bar(args, itr, epoch, no_progress_bar='simple')
     itr = itertools.islice(progress, batch_offset, None)
-
     # reset training meters
     for k in ['train_loss', 'train_nll_loss', 'wps', 'ups', 'wpb', 'bsz', 'clip']:
         meter = trainer.get_meter(k)
@@ -146,7 +146,7 @@ def train(args, trainer, dataset, epoch, batch_offset):
     max_update = args.max_update or math.inf
     for i, sample in enumerate(itr, start=batch_offset):
         log_output = trainer.train_step(sample)
-
+        
         # log mid-epoch stats
         stats = get_training_stats(trainer)
         for k, v in log_output.items():
@@ -187,13 +187,13 @@ def train(args, trainer, dataset, epoch, batch_offset):
 
         if num_updates >= max_update:
             break
-
+    
     # log end-of-epoch stats
     stats = get_training_stats(trainer)
     for k, meter in extra_meters.items():
         stats[k] = meter.avg
     progress.print(stats)
-
+    
 
 def get_training_stats(trainer):
     stats = collections.OrderedDict()

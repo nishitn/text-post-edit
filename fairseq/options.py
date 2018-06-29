@@ -90,6 +90,8 @@ def add_dataset_args(parser, train=False, gen=False):
                        help='target language')
     group.add_argument('--max-source-positions', default=1024, type=int, metavar='N',
                        help='max number of tokens in the source sequence')
+    group.add_argument('--max-guess-positions', default=1024, type=int, metavar='N',
+                       help='max number of tokens in the target sequence')
     group.add_argument('--max-target-positions', default=1024, type=int, metavar='N',
                        help='max number of tokens in the target sequence')
     group.add_argument('--skip-invalid-size-inputs-valid-test', action='store_true',

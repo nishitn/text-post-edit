@@ -77,19 +77,27 @@ def main(args):
         tgt_dict.save(os.path.join(args.destdir, 'dict.{}.txt'.format(args.target_lang)),
                       threshold=args.thresholdtgt, nwords=args.nwordstgt)
 
-    def make_binary_dataset(input_prefix, output_prefix, lang):
+    def make_binary_dataset(input_prefix, output_prefix, lang, guess):
+        print('aaa')
         dict = dictionary.Dictionary.load(os.path.join(args.destdir, 'dict.{}.txt'.format(lang)))
         print('| [{}] Dictionary: {} types'.format(lang, len(dict) - 1))
 
-        ds = indexed_dataset.IndexedDatasetBuilder(
-            '{}/{}.{}-{}.{}.bin'.format(args.destdir, output_prefix, args.source_lang,
+        if not guess:
+            ds = indexed_dataset.IndexedDatasetBuilder(
+                '{}/{}.{}-{}.{}.bin'.format(args.destdir, output_prefix, args.source_lang,
                                         args.target_lang, lang)
-        )
-
+            )
+            input_file = '{}.{}'.format(input_prefix, lang)
+        else:
+            ds = indexed_dataset.IndexedDatasetBuilder(
+                '{}/{}.{}-{}.{}.guess.bin'.format(args.destdir, output_prefix, args.source_lang,
+                                        args.target_lang, lang)
+            )
+            input_file = '{}.{}.guess'.format(input_prefix, lang)
+        
         def consumer(tensor):
             ds.add_item(tensor)
 
-        input_file = '{}.{}'.format(input_prefix, lang)
         res = Tokenizer.binarize(input_file, dict, consumer)
         print('| [{}] {}: {} sents, {} tokens, {:.3}% replaced by {}'.format(
             lang, input_file, res['nseq'], res['ntok'],
@@ -98,29 +106,32 @@ def main(args):
             args.destdir, output_prefix,
             args.source_lang, args.target_lang, lang))
 
-    def make_dataset(input_prefix, output_prefix, lang, output_format='binary'):
+    def make_dataset(input_prefix, output_prefix, lang, guess, output_format='binary'):
+        print('aa')
         if output_format == 'binary':
-            make_binary_dataset(input_prefix, output_prefix, lang)
+            make_binary_dataset(input_prefix, output_prefix, lang, guess)
         elif output_format == 'raw':
             # Copy original text file to destination folder
             output_text_file = os.path.join(args.destdir, '{}.{}'.format(output_prefix, lang))
             shutil.copyfile('{}.{}'.format(input_prefix, lang), output_text_file)
 
-    def make_all(args, make_dataset, lang):
+    def make_all(args, make_dataset, lang, guess):
+        print('a')
         if args.trainpref:
-            make_dataset(args.trainpref, 'train', lang, args.output_format)
+            make_dataset(args.trainpref, 'train', lang, guess, args.output_format)
         if args.validpref:
             for k, validpref in enumerate(args.validpref.split(',')):
                 outprefix = 'valid{}'.format(k) if k > 0 else 'valid'
-                make_dataset(validpref, outprefix, lang, args.output_format)
+                make_dataset(validpref, outprefix, lang, guess, args.output_format)
         if args.testpref:
             for k, testpref in enumerate(args.testpref.split(',')):
                 outprefix = 'test{}'.format(k) if k > 0 else 'test'
-                make_dataset(testpref, outprefix, lang, args.output_format)
+                make_dataset(testpref, outprefix, lang, guess, args.output_format)
 
-    make_all(args, make_dataset, args.source_lang)
+    make_all(args, make_dataset, args.source_lang, False)
     if target:
-        make_all(args, make_dataset, args.target_lang)
+        make_all(args, make_dataset, args.target_lang, guess = False)
+        make_all(args, make_dataset, args.target_lang, guess = True)
 
     print('| Wrote preprocessed data to {}'.format(args.destdir))
 

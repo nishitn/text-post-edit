@@ -14,7 +14,8 @@ from fairseq import utils
 from fairseq.data import LanguagePairDataset
 from fairseq.modules import BeamableMM, GradMultiply, LearnedPositionalEmbedding, LinearizedConvolution
 #--------------------------------------------------------------------------------------------------------------------------
-from . import FairseqEncoder, FairseqIncrementalDecoder, FairseqModel, register_model, register_model_architecture, FairseqGuessEncoder
+from . import FairseqEncoder, FairseqGuessEncoder, FairseqIncrementalDecoder, FairseqModel  
+from . import register_model, register_model_architecture
 
 
 @register_model('fconv')
@@ -123,8 +124,7 @@ class FConvModel(FairseqModel):
 
 class FConvEncoder(FairseqEncoder):
     """Convolutional encoder"""
-    def __init__(self, dictionary, embed_dim=512, embed_dict=None,
-                 max_positions=1024, convolutions=((512, 3),) * 20, dropout=0.1):
+    def __init__(self, dictionary, embed_dim=512, embed_dict=None, max_positions=1024, convolutions=((512, 3),) * 20, dropout=0.1):
         super().__init__(dictionary)
         self.dropout = dropout
         self.num_attention_layers = None
@@ -555,6 +555,8 @@ def fconv_wmt_en_ro(args):
     base_architecture(args)
     args.encoder_embed_dim = 512
     args.encoder_layers = '[(512, 3)] * 20'
+    args.guess_encoder_embed_dim = 512
+    args.guess_encoder_layers = '[(512, 3)] * 20'
     args.decoder_embed_dim = 512
     args.decoder_layers = '[(512, 3)] * 20'
     args.decoder_out_embed_dim = 512
@@ -568,6 +570,8 @@ def fconv_wmt_en_de(args):
     convs += ' + [(2048, 1)] * 2'  # final 2 layers use 1x1 convolutions
     args.encoder_embed_dim = 768
     args.encoder_layers = convs
+    args.guess_encoder_embed_dim = 768
+    args.guess_encoder_layers = convs
     args.decoder_embed_dim = 768
     args.decoder_layers = convs
     args.decoder_out_embed_dim = 512
@@ -583,6 +587,8 @@ def fconv_wmt_en_fr(args):
     convs += ' + [(4096, 1)] * 1'  # final 1 layer uses 1x1 convolutions
     args.encoder_embed_dim = 768
     args.encoder_layers = convs
+    args.guess_encoder_embed_dim = 768
+    args.guess_encoder_layers = convs
     args.decoder_embed_dim = 768
     args.decoder_layers = convs
     args.decoder_out_embed_dim = 512
