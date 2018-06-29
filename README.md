@@ -4,7 +4,7 @@ Link to Original -  [fairseq github](https://github.com/pytorch/fairseq/)
 
 # Pre Processing
 
-Pre-Porcess binarises guess file now, no extra code 
+```preprocess.py``` binarises guess file now, no extra code 
 file name format = train.target_lang.guess test.target_lang.guess valid.target_lang.guess
 Preprocess Code Example
 ```
